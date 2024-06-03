@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokemon Usage Visualization</title>
+    <style>
+        .bar {
+            fill: steelblue;
+        }
+        .label, .percentage {
+            font-size: 12px;
+            fill: black;
+        }
+        .pokemon-image {
+            width: 30px;
+            height: 30px;
+        }
+        .label-container {
+            display: flex;
+            align-items: center;
+        }
+        .pokemon-name {
+            margin-left: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Upload Pokémon Data</h1>
+    <input type="file" id="fileInput">
+    <button onclick="uploadFile()">Upload</button>
+    <div id="chart"></div>
+    
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        function uploadFile() {
+            const input = document.getElementById('fileInput');
+            const file = input.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function(event) {
+                const data = event.target.result;
+                fetch('/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ data: data }),
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(usageRates => {
+                    renderChart(usageRates);
+                })
+                .catch(error => {
+                    console.error('There has been a problem with your fetch operation:', error);
+                });
+            };
+
+            reader.onerror = function() {
+                console.error("File could not be read! Code " + reader.error.code);
+            };
+
+            if (file) {
+                reader.readAsText(file);
+            } else {
+                console.error("No file selected");
+            }
+        }
+
+        function renderChart(usageRates) {
+            const data = Object.keys(usageRates).map(species => ({ species: species, usage: usageRates[species] }));
+
+            data.sort((a, b) => b.usage - a.usage);  
+
+            const width = 800;
+            const barHeight = 40;  
+            const height = barHeight * data.length;
+
+            const svg = d3.select("#chart").append("svg")
+                          .attr("width", width)
+                          .attr("height", height);
+
+            const x = d3.scaleLinear()
+                        .domain([0, d3.max(data, d => d.usage)])
+                        .range([0, width - 250]);  
+
+            const y = d3.scaleBand()
+                        .domain(data.map(d => d.species))
+                        .range([0, height])
+                        .padding(0.1);
+
+            svg.append("g")
+               .selectAll("rect")
+               .data(data)
+               .enter()
+               .append("rect")
+               .attr("class", "bar")
+               .attr("x", 200)  
+               .attr("y", d => y(d.species))
+               .attr("width", d => x(d.usage))
+               .attr("height", y.bandwidth() - 10);  
+
+            const labels = svg.append("g")
+               .attr("transform", `translate(0,0)`)
+               .selectAll("g")
+               .data(data)
+               .enter()
+               .append("g")
+               .attr("class", "label-container")
+               .attr("transform", d => `translate(0,${y(d.species)})`);
+
+            labels.append("image")
+               .attr("xlink:href", d => getPokemonImageUrl(d.species))
+               .attr("x", 170)
+               .attr("y", -5)  
+               .attr("width", 30)
+               .attr("height", 30)
+               .attr("class", "pokemon-image");
+
+            labels.append("text")
+               .attr("class", "label")
+               .attr("x", 160)
+               .attr("y", y.bandwidth() / 2)
+               .attr("dy", ".35em")
+               .attr("text-anchor", "end")
+               .text((d, i) => `${i + 1}. ${d.species}`);
+
+            labels.append("text")
+               .attr("class", "occurrences")
+               .attr("x", 160)
+               .attr("y", y.bandwidth() / 2 + 15)  
+               .attr("dy", ".35em")
+               .attr("text-anchor", "end")
+               .text(d => `Occurrences: ${d.usage}`);
+
+            svg.append("g")
+               .selectAll("text.percentage")
+               .data(data)
+               .enter()
+               .append("text")
+               .attr("class", "percentage")
+               .attr("x", d => 200 + x(d.usage) + 5)
+               .attr("y", d => y(d.species) + y.bandwidth() / 2)
+               .attr("dy", ".35em")
+               .attr("text-anchor", "start")
+               .text(d => `${d.usage.toFixed(2)}%`);
+
+            function getPokemonImageUrl(species) {
+                return `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${species.toLowerCase()}.png`;
+            }
+        }
+    </script>
+</body>
+</html>
